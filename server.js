@@ -1,5 +1,6 @@
 // Student Topics — zero-dependency Node.js server
-// Run: node server.js   (then open http://localhost:3000)
+// Local:  ADMIN_PASS=xxx node server.js   (then open http://localhost:3000)
+// Vercel: api/index.js re-exports the request handler below.
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -31,8 +32,10 @@ function sb(pathAndQuery, opts = {}) {
 
 let fileData = [];
 if (!USE_DB) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  try { fileData = JSON.parse(fs.readFileSync(DATA_FILE, "utf8")); } catch { fileData = []; }
+  try {
+    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+    fileData = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+  } catch { fileData = []; }
 }
 function saveFile() {
   const tmp = DATA_FILE + ".tmp";
@@ -70,8 +73,18 @@ const store = {
   },
 };
 
-// ---------- sessions & rate limiting ----------
-const sessions = new Map(); // token -> expiry
+// ---------- sessions (stateless signed cookie — works on serverless) & rate limiting ----------
+const sign = (v) => crypto.createHmac("sha256", "session:" + ADMIN_USER + ":" + ADMIN_PASS).update(v).digest("hex");
+function makeToken() {
+  const exp = String(Date.now() + SESSION_TTL);
+  return exp + "." + sign(exp);
+}
+function validToken(t) {
+  if (!ADMIN_PASS || !t) return false;
+  const [exp, sig] = t.split(".");
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
+  return safeEqual(sig, sign(exp));
+}
 const loginAttempts = new Map(); // ip -> {count, until}
 const submitHits = new Map(); // ip -> [timestamps]
 
@@ -85,10 +98,7 @@ function getCookie(req, name) {
   return m ? decodeURIComponent(m[1]) : null;
 }
 function isAuthed(req) {
-  const t = getCookie(req, "sid");
-  if (!t || !sessions.has(t)) return false;
-  if (sessions.get(t) < Date.now()) { sessions.delete(t); return false; }
-  return true;
+  return validToken(getCookie(req, "sid"));
 }
 function clientIp(req) {
   return (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress;
@@ -108,6 +118,10 @@ function json(res, status, obj, headers = {}) {
   send(res, status, JSON.stringify(obj), { "Content-Type": "application/json; charset=utf-8", ...headers });
 }
 function readBody(req, limit = 10_000) {
+  if (req.body !== undefined) { // Vercel already parsed it
+    if (req.body && typeof req.body === "object") return Promise.resolve(req.body);
+    try { return Promise.resolve(JSON.parse(req.body || "{}")); } catch { return Promise.reject(new Error("bad json")); }
+  }
   return new Promise((resolve, reject) => {
     let data = "";
     req.on("data", (c) => {
@@ -130,7 +144,7 @@ function serveStatic(res, file) {
 }
 
 // ---------- routes ----------
-const server = http.createServer(async (req, res) => {
+async function handler(req, res) {
   const url = new URL(req.url, "http://x");
   const route = req.method + " " + url.pathname;
 
@@ -169,8 +183,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 401, { error: "Wrong username or password." });
       }
       loginAttempts.delete(ip);
-      const token = crypto.randomBytes(32).toString("hex");
-      sessions.set(token, Date.now() + SESSION_TTL);
+      const token = makeToken();
       const secure = (req.headers["x-forwarded-proto"] === "https") ? "; Secure" : "";
       return json(res, 200, { ok: true }, {
         "Set-Cookie": `sid=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000}${secure}`,
@@ -178,8 +191,6 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (route === "POST /api/logout") {
-      const t = getCookie(req, "sid");
-      if (t) sessions.delete(t);
       return json(res, 200, { ok: true }, { "Set-Cookie": "sid=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" });
     }
 
@@ -233,9 +244,11 @@ const server = http.createServer(async (req, res) => {
     }
     json(res, 400, { error: "Bad request." });
   }
-});
+}
 
-server.listen(PORT, () => {
+module.exports = handler;
+
+if (require.main === module) http.createServer(handler).listen(PORT, () => {
   console.log(USE_DB ? "Storage: Supabase" : `Storage: local file (${DATA_FILE})`);
   console.log(`Student page:  http://localhost:${PORT}/`);
   console.log(`Admin panel:   http://localhost:${PORT}/admin`);
