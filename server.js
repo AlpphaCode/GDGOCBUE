@@ -146,6 +146,9 @@ function serveStatic(res, file) {
 // ---------- routes ----------
 async function handler(req, res) {
   const url = new URL(req.url, "http://x");
+  // On Vercel, vercel.json rewrites pass the original path in ?__p=
+  const orig = url.searchParams.get("__p");
+  if (orig) url.pathname = orig.startsWith("/") ? orig : "/" + orig;
   const route = req.method + " " + url.pathname;
 
   try {
