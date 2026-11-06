@@ -138,6 +138,26 @@ input:focus, textarea:focus {
 
 .hidden { display: none !important; }
 
+/* ---------- Social footer ---------- */
+.social {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 16px 28px 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 13px; font-weight: 600;
+}
+@media (min-width: 520px) { .social { padding: 16px 40px 22px; } }
+.social-links { display: flex; gap: 8px; }
+.social-links a {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 12px; border-radius: 10px;
+  border: 1.5px solid var(--border);
+  color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600;
+  transition: border-color .15s, color .15s, background .15s, transform .08s;
+}
+.social-links a:active { transform: scale(.97); }
+.social-links a.ig:hover { color: #e1306c; border-color: #e1306c; background: rgba(225,48,108,.08); }
+.social-links a.fb:hover { color: #1877f2; border-color: #1877f2; background: rgba(24,119,242,.08); }
+
 /* ---------- Admin ---------- */
 .topbar {
   position: sticky; top: 0; z-index: 5;
