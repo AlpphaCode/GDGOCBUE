@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Submit Your Topic</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="center">
+    <div class="card">
+      <div class="stripe"><span></span><span></span><span></span><span></span></div>
+      <div class="card-body">
+        <div class="brand"><div class="dots"><i></i><i></i><i></i><i></i></div>GDG on Campus BUE</div>
+
+        <section id="formView">
+          <h1>Submit your topic</h1>
+          <p class="sub">Write your name and the topic you'd like to present.</p>
+          <form id="form" novalidate>
+            <div class="field">
+              <label for="name">Full name</label>
+              <input id="name" name="name" type="text" autocomplete="name" maxlength="100" placeholder="e.g. Sara Ahmed" required>
+            </div>
+            <div class="field">
+              <label for="topic">Topic</label>
+              <textarea id="topic" name="topic" maxlength="300" placeholder="e.g. Building apps with Flutter" required></textarea>
+              <div class="hint"><span id="count">0</span>/300</div>
+            </div>
+            <button class="btn" id="submitBtn" type="submit">Submit</button>
+            <div class="msg" id="msg" role="status" aria-live="polite"></div>
+          </form>
+        </section>
+
+        <section id="doneView" class="success hidden">
+          <div class="check">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <h1>Thank you!</h1>
+          <p>Your topic was submitted successfully.</p>
+          <button class="btn" id="againBtn" type="button">Submit another</button>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById("form");
+    const nameEl = document.getElementById("name");
+    const topicEl = document.getElementById("topic");
+    const msg = document.getElementById("msg");
+    const btn = document.getElementById("submitBtn");
+    const count = document.getElementById("count");
+
+    topicEl.addEventListener("input", () => { count.textContent = topicEl.value.length; });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      msg.textContent = ""; msg.className = "msg";
+      const name = nameEl.value.trim();
+      const topic = topicEl.value.trim();
+      if (name.length < 2) return showErr("Please enter your full name.", nameEl);
+      if (topic.length < 2) return showErr("Please enter a topic.", topicEl);
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Submitting…';
+      try {
+        const r = await fetch("/api/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, topic }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || "Something went wrong.");
+        form.reset(); count.textContent = "0";
+        document.getElementById("formView").classList.add("hidden");
+        document.getElementById("doneView").classList.remove("hidden");
+      } catch (err) {
+        showErr(err.message || "Network error. Please try again.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Submit";
+      }
+    });
+
+    document.getElementById("againBtn").addEventListener("click", () => {
+      document.getElementById("doneView").classList.add("hidden");
+      document.getElementById("formView").classList.remove("hidden");
+      nameEl.focus();
+    });
+
+    function showErr(text, el) {
+      msg.textContent = text; msg.className = "msg err";
+      if (el) el.focus();
+    }
+  </script>
+</body>
+</html>

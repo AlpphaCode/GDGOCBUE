@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Admin Panel</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Login -->
+  <main class="center" id="loginView">
+    <div class="card">
+      <div class="stripe"><span></span><span></span><span></span><span></span></div>
+      <div class="card-body">
+        <div class="brand"><div class="dots"><i></i><i></i><i></i><i></i></div>Admin Panel</div>
+        <h1>Sign in</h1>
+        <p class="sub">Admins only.</p>
+        <form id="loginForm">
+          <div class="field">
+            <label for="username">Username</label>
+            <input id="username" type="text" autocomplete="username" required>
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" type="password" autocomplete="current-password" required>
+          </div>
+          <button class="btn" id="loginBtn" type="submit">Sign in</button>
+          <div class="msg" id="loginMsg" role="status" aria-live="polite"></div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <!-- Dashboard -->
+  <div id="dashView" class="hidden">
+    <header class="topbar">
+      <div class="brand"><div class="dots"><i></i><i></i><i></i><i></i></div>Submissions</div>
+      <button class="btn ghost" id="logoutBtn">Log out</button>
+    </header>
+    <div class="wrap">
+      <div class="stats">
+        <div class="stat"><b id="total">0</b><span>Total submissions</span></div>
+        <div class="stat"><b id="today">0</b><span>Today</span></div>
+      </div>
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Search by name or topic…">
+        <button class="btn ghost" id="refreshBtn">Refresh</button>
+        <a class="btn small" href="/api/admin/export.csv">Export CSV</a>
+      </div>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Name</th><th>Topic</th><th>Submitted</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="empty hidden" id="empty">No submissions yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let all = [];
+
+    async function load() {
+      const r = await fetch("/api/admin/submissions");
+      if (r.status === 401) return showLogin();
+      all = await r.json();
+      showDash();
+      render();
+    }
+
+    function render() {
+      const q = $("search").value.trim().toLowerCase();
+      const list = q ? all.filter((s) => (s.name + " " + s.topic).toLowerCase().includes(q)) : all;
+      const tbody = $("rows");
+      tbody.replaceChildren();
+      for (const s of list) {
+        const tr = document.createElement("tr");
+        const name = document.createElement("td"); name.className = "name"; name.textContent = s.name;
+        const topic = document.createElement("td"); topic.className = "topic"; topic.textContent = s.topic;
+        const date = document.createElement("td"); date.className = "date";
+        date.textContent = new Date(s.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+        const act = document.createElement("td"); act.className = "act";
+        const del = document.createElement("button"); del.className = "del"; del.title = "Delete"; del.textContent = "×";
+        del.onclick = () => remove(s);
+        act.append(del);
+        tr.append(name, topic, date, act);
+        tbody.append(tr);
+      }
+      $("empty").classList.toggle("hidden", list.length > 0);
+      $("empty").textContent = all.length ? "No matches." : "No submissions yet.";
+      $("total").textContent = all.length;
+      const todayStr = new Date().toDateString();
+      $("today").textContent = all.filter((s) => new Date(s.createdAt).toDateString() === todayStr).length;
+    }
+
+    async function remove(s) {
+      if (!confirm(`Delete submission from "${s.name}"?`)) return;
+      const r = await fetch("/api/admin/submissions/" + encodeURIComponent(s.id), { method: "DELETE" });
+      if (r.status === 401) return showLogin();
+      all = all.filter((x) => x.id !== s.id);
+      render();
+    }
+
+    function showLogin() { $("dashView").classList.add("hidden"); $("loginView").classList.remove("hidden"); }
+    function showDash() { $("loginView").classList.add("hidden"); $("dashView").classList.remove("hidden"); }
+
+    $("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = $("loginBtn"), msg = $("loginMsg");
+      msg.textContent = ""; msg.className = "msg";
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Signing in…';
+      try {
+        const r = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: $("username").value, password: $("password").value }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || "Login failed.");
+        $("password").value = "";
+        await load();
+      } catch (err) {
+        msg.textContent = err.message; msg.className = "msg err";
+      } finally {
+        btn.disabled = false; btn.textContent = "Sign in";
+      }
+    });
+
+    $("logoutBtn").onclick = async () => { await fetch("/api/logout", { method: "POST" }); showLogin(); };
+    $("refreshBtn").onclick = load;
+    $("search").addEventListener("input", render);
+    setInterval(() => { if (!$("dashView").classList.contains("hidden")) load(); }, 15000);
+
+    load();
+  </script>
+</body>
+</html>
